@@ -30,7 +30,6 @@
             color: #2c3e50;
             padding: 1rem 0;
             box-shadow: 0 2px 20px rgba(0,0,0,0.1);
-            backdrop-filter: blur(10px);
         }
         
         .header-content {
@@ -78,26 +77,7 @@
             width: 10px;
             height: 10px;
             border-radius: 50%;
-            background-color: #7f8c8d;
-        }
-        
-        .sync-dot.syncing {
-            background-color: #f39c12;
-            animation: pulse 1.5s infinite;
-        }
-        
-        .sync-dot.synced {
             background-color: #2ecc71;
-        }
-        
-        .sync-dot.error {
-            background-color: #e74c3c;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.1); }
-            100% { opacity: 1; transform: scale(1); }
         }
         
         .auth-container {
@@ -115,7 +95,6 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             width: 100%;
             max-width: 450px;
-            backdrop-filter: blur(10px);
         }
         
         .auth-header {
@@ -266,7 +245,6 @@
             padding: 30px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.1);
             margin-top: 20px;
-            backdrop-filter: blur(10px);
         }
         
         .interface.active {
@@ -449,7 +427,6 @@
             justify-content: center;
             align-items: center;
             z-index: 1000;
-            backdrop-filter: blur(5px);
         }
         
         .modal-content {
@@ -605,8 +582,8 @@
                 <div class="user-info">
                     <span id="current-user"></span>
                     <div class="sync-status">
-                        <span class="sync-dot" id="sync-dot"></span>
-                        <span id="sync-text">Синхронизация...</span>
+                        <span class="sync-dot"></span>
+                        <span id="sync-text">✅ Данные общие для всех</span>
                     </div>
                     <button class="logout-btn" onclick="logout()">Выйти</button>
                 </div>
@@ -676,7 +653,7 @@
     <!-- Основное приложение -->
     <div id="app-content" class="container hidden">
         <div class="online-users" id="online-users">
-            <h4>👥 Сейчас онлайн:</h4>
+            <h4>👥 Активные пользователи:</h4>
             <div class="user-list" id="user-list">
                 <!-- Список пользователей будет заполнен динамически -->
             </div>
@@ -812,13 +789,12 @@
     </div>
 
     <script>
-        // 🗄️ Система хранения ОБЩИХ данных в localStorage
+        // 🗄️ Упрощенная система хранения ОБЩИХ данных
         const STORAGE_KEYS = {
             CLASSES: 'school_shared_classes',
-            TEACHERS: 'school_shared_teachers',
+            TEACHERS: 'school_teachers',
             CURRENT_USER: 'current_user',
-            ONLINE_USERS: 'school_online_users',
-            DATA_VERSION: 'school_data_version'
+            ONLINE_USERS: 'school_online_users'
         };
 
         // 👨‍🏫 Учетные данные учителей
@@ -849,147 +825,74 @@
                         biology: [5, 5, 4] 
                     }
                 ]
-            },
-            {
-                id: 2,
-                name: "10 Б",
-                students: [
-                    { 
-                        id: 3, 
-                        name: "Кузнецова Анна", 
-                        math: [5, 5, 5], 
-                        russian: [5, 5, 4], 
-                        history: [5, 5, 5], 
-                        biology: [5, 5, 5] 
-                    },
-                    { 
-                        id: 4, 
-                        name: "Смирнов Иван", 
-                        math: [4, 4, 3], 
-                        russian: [4, 3, 4], 
-                        history: [3, 4, 3], 
-                        biology: [4, 3, 4] 
-                    }
-                ]
             }
         ];
 
-        // 📥 Загрузка ОБЩИХ данных из localStorage
-        function loadSharedData() {
+        // 📥 Загрузка данных
+        function loadData() {
             try {
                 const savedClasses = localStorage.getItem(STORAGE_KEYS.CLASSES);
-                const savedTeachers = localStorage.getItem(STORAGE_KEYS.TEACHERS);
-                
-                // Если данных нет, создаем начальные
-                if (!savedClasses) {
-                    saveSharedData({ classes: [], teachers: teachers });
-                    return { classes: [], teachers: teachers };
-                }
-                
                 return {
-                    classes: JSON.parse(savedClasses),
-                    teachers: JSON.parse(savedTeachers)
-                };
-            } catch (error) {
-                console.error('Ошибка загрузки данных:', error);
-                return {
-                    classes: [],
+                    classes: savedClasses ? JSON.parse(savedClasses) : [],
                     teachers: teachers
                 };
+            } catch (error) {
+                return { classes: [], teachers: teachers };
             }
         }
 
-        // 💾 Сохранение ОБЩИХ данных в localStorage
-        function saveSharedData(data) {
+        // 💾 Сохранение данных
+        function saveData() {
             try {
-                if (data.classes) {
-                    localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(data.classes));
-                    // Увеличиваем версию данных для триггера синхронизации
-                    localStorage.setItem(STORAGE_KEYS.DATA_VERSION, Date.now().toString());
-                }
-                if (data.teachers) {
-                    localStorage.setItem(STORAGE_KEYS.TEACHERS, JSON.stringify(data.teachers));
-                }
+                localStorage.setItem(STORAGE_KEYS.CLASSES, JSON.stringify(classes));
+                // Триггерим синхронизацию
+                localStorage.setItem('last_update', Date.now().toString());
                 return true;
             } catch (error) {
-                console.error('Ошибка сохранения данных:', error);
                 return false;
             }
         }
 
-        // 🔄 Синхронизация данных между вкладками
+        // 🔄 Синхронизация между вкладками
         function setupDataSync() {
-            // Слушаем изменения в localStorage
             window.addEventListener('storage', function(e) {
-                if (e.key === STORAGE_KEYS.DATA_VERSION) {
-                    updateSyncStatus('syncing', '🔄 Обновление данных...');
-                    setTimeout(() => {
-                        const sharedData = loadSharedData();
-                        classes = sharedData.classes;
-                        renderClassSelector();
-                        renderTeacherTable();
-                        renderStudentAuthForm();
-                        updateSyncStatus('synced', '✅ Данные синхронизированы');
-                    }, 100);
-                }
-            });
-
-            // Периодическая проверка обновлений
-            setInterval(() => {
-                const sharedData = loadSharedData();
-                if (JSON.stringify(sharedData.classes) !== JSON.stringify(classes)) {
+                if (e.key === 'last_update') {
+                    const sharedData = loadData();
                     classes = sharedData.classes;
                     renderClassSelector();
                     renderTeacherTable();
                     renderStudentAuthForm();
-                    updateSyncStatus('synced', '✅ Данные обновлены');
+                    updateOnlineUsers();
                 }
-            }, 2000);
+            });
+
+            // Периодическая проверка
+            setInterval(() => {
+                updateOnlineUsers();
+            }, 5000);
         }
 
-        // 👥 Управление онлайн пользователями
-        function setupOnlineUsers() {
-            const userId = 'user_' + Math.random().toString(36).substr(2, 9);
-            const userName = currentUser ? currentUser.name : 'Гость';
-            
-            // Сохраняем информацию о пользователе
-            const userInfo = {
-                id: userId,
-                name: userName,
-                type: currentUser ? currentUser.type : 'guest',
+        // 👥 Обновление списка онлайн пользователей
+        function updateOnlineUsers() {
+            const userList = document.getElementById('user-list');
+            if (!userList || !currentUser) return;
+
+            let onlineUsers = JSON.parse(localStorage.getItem(STORAGE_KEYS.ONLINE_USERS) || '{}');
+            onlineUsers[currentUser.id] = {
+                id: currentUser.id,
+                name: currentUser.name,
+                type: currentUser.type,
                 lastSeen: Date.now()
             };
-            
-            // Загружаем список онлайн пользователей
-            let onlineUsers = JSON.parse(localStorage.getItem(STORAGE_KEYS.ONLINE_USERS) || '{}');
-            onlineUsers[userId] = userInfo;
-            
-            // Удаляем неактивных пользователей (больше 30 секунд)
+
+            // Удаляем неактивных
             Object.keys(onlineUsers).forEach(id => {
                 if (Date.now() - onlineUsers[id].lastSeen > 30000) {
                     delete onlineUsers[id];
                 }
             });
-            
+
             localStorage.setItem(STORAGE_KEYS.ONLINE_USERS, JSON.stringify(onlineUsers));
-            
-            // Обновляем список каждые 10 секунд
-            setInterval(() => {
-                onlineUsers = JSON.parse(localStorage.getItem(STORAGE_KEYS.ONLINE_USERS) || '{}');
-                onlineUsers[userId].lastSeen = Date.now();
-                
-                // Удаляем неактивных
-                Object.keys(onlineUsers).forEach(id => {
-                    if (Date.now() - onlineUsers[id].lastSeen > 30000) {
-                        delete onlineUsers[id];
-                    }
-                });
-                
-                localStorage.setItem(STORAGE_KEYS.ONLINE_USERS, JSON.stringify(onlineUsers));
-                renderOnlineUsers(onlineUsers);
-            }, 10000);
-            
-            // Первоначальный рендеринг
             renderOnlineUsers(onlineUsers);
         }
 
@@ -1011,18 +914,7 @@
             });
         }
 
-        // 🔄 Обновление статуса синхронизации
-        function updateSyncStatus(status, text) {
-            const syncDot = document.getElementById('sync-dot');
-            const syncText = document.getElementById('sync-text');
-            
-            if (syncDot && syncText) {
-                syncDot.className = 'sync-dot ' + status;
-                syncText.textContent = text;
-            }
-        }
-
-        // 📤 Экспорт данных в файл
+        // 📤 Экспорт данных
         function exportData() {
             if (classes.length === 0) {
                 alert('❌ Нет данных для экспорта');
@@ -1031,9 +923,7 @@
             
             const data = {
                 classes: classes,
-                teachers: teachers,
-                exportDate: new Date().toISOString(),
-                version: '1.0'
+                exportDate: new Date().toISOString()
             };
             
             const dataStr = JSON.stringify(data, null, 2);
@@ -1042,16 +932,14 @@
             const url = URL.createObjectURL(dataBlob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `school_shared_data_${new Date().toISOString().split('T')[0]}.json`;
+            link.download = `school_data.json`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            
-            alert('✅ Данные успешно экспортированы!');
         }
 
-        // 📥 Импорт данных из файла
+        // 📥 Импорт данных
         function importData() {
             const input = document.createElement('input');
             input.type = 'file';
@@ -1066,20 +954,15 @@
                     try {
                         const importedData = JSON.parse(event.target.result);
                         
-                        if (confirm('❓ Вы уверены, что хотите импортировать данные? Все текущие данные будут заменены.')) {
+                        if (confirm('❓ Импортировать данные?')) {
                             if (importedData.classes) {
                                 classes = importedData.classes;
-                                saveSharedData({ classes: classes });
+                                saveData();
+                                location.reload();
                             }
-                            if (importedData.teachers) {
-                                // teachers = importedData.teachers;
-                                // saveSharedData({ teachers: teachers });
-                            }
-                            
-                            location.reload();
                         }
                     } catch (error) {
-                        alert('❌ Ошибка при импорте данных: неверный формат файла');
+                        alert('❌ Ошибка при импорте данных');
                     }
                 };
                 reader.readAsText(file);
@@ -1090,27 +973,25 @@
 
         // 🎮 Добавление демо-данных
         function addDemoData() {
-            if (confirm('❓ Добавить демонстрационные данные? Это добавит два класса с учениками и оценками.')) {
+            if (confirm('❓ Добавить демо-данные?')) {
                 classes = [...demoData];
-                saveSharedData({ classes: classes });
+                saveData();
                 location.reload();
             }
         }
 
-        // 🗑️ Сброс всех данных
+        // 🗑️ Сброс данных
         function resetData() {
-            if (confirm('⚠️ ВЫ УВЕРЕНЫ, что хотите сбросить ВСЕ данные? Это действие нельзя отменить!')) {
+            if (confirm('⚠️ Сбросить ВСЕ данные?')) {
                 classes = [];
-                saveSharedData({ classes: classes });
-                localStorage.removeItem(STORAGE_KEYS.ONLINE_USERS);
+                saveData();
                 location.reload();
             }
         }
 
-        // 🎯 Инициализация ОБЩИХ данных
-        let sharedData = loadSharedData();
+        // 🎯 Инициализация данных
+        let sharedData = loadData();
         let classes = sharedData.classes;
-        let teachers = sharedData.teachers;
         let currentClassId = classes.length > 0 ? classes[0].id : null;
         let currentUser = null;
         let currentStudent = null;
@@ -1118,15 +999,13 @@
 
         // 🎯 Инициализация при загрузке
         document.addEventListener('DOMContentLoaded', function() {
-            // Настраиваем синхронизацию данных
             setupDataSync();
             
-            // Проверяем, есть ли сохраненный пользователь
             const savedUser = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
             if (savedUser) {
                 currentUser = JSON.parse(savedUser);
                 showAppInterface();
-                setupOnlineUsers();
+                updateOnlineUsers();
             } else {
                 showAuthInterface();
             }
@@ -1150,7 +1029,7 @@
                 
                 localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
                 showAppInterface();
-                setupOnlineUsers();
+                updateOnlineUsers();
             } else {
                 alert('❌ Неверный логин или пароль');
             }
@@ -1183,10 +1062,10 @@
             
             localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
             showAppInterface();
-            setupOnlineUsers();
+            updateOnlineUsers();
         }
 
-        // 🚪 Выход из системы
+        // 🚪 Выход
         function logout() {
             currentUser = null;
             currentStudent = null;
@@ -1194,7 +1073,7 @@
             showAuthInterface();
         }
 
-        // 🎛️ Переключение вкладок авторизации
+        // 🎛️ Переключение вкладок
         function switchAuthTab(role) {
             document.getElementById('teacher-tab').classList.toggle('active', role === 'teacher');
             document.getElementById('student-tab').classList.toggle('active', role === 'student');
@@ -1202,21 +1081,19 @@
             document.getElementById('student-auth').classList.toggle('hidden', role !== 'student');
         }
 
-        // 🖥️ Показать интерфейс авторизации
+        // 🖥️ Показать интерфейс
         function showAuthInterface() {
             document.getElementById('app-header').classList.add('hidden');
             document.getElementById('app-content').classList.add('hidden');
             document.getElementById('auth-container').classList.remove('hidden');
         }
         
-        // 🖥️ Показать основное приложение
         function showAppInterface() {
             document.getElementById('auth-container').classList.add('hidden');
             document.getElementById('app-header').classList.remove('hidden');
             document.getElementById('app-content').classList.remove('hidden');
             
             document.getElementById('current-user').textContent = currentUser.name;
-            updateSyncStatus('synced', '✅ Данные синхронизированы');
             
             if (currentUser.type === 'teacher') {
                 document.getElementById('teacher-controls').classList.remove('hidden');
@@ -1247,13 +1124,13 @@
             }
         }
 
-        // 📋 Рендеринг формы авторизации для учеников
+        // 📋 Рендеринг формы
         function renderStudentAuthForm() {
             const classSelect = document.getElementById('student-class');
             classSelect.innerHTML = '<option value="">Выберите класс</option>';
             
             if (classes.length === 0) {
-                classSelect.innerHTML = '<option value="">Нет доступных классов</option>';
+                classSelect.innerHTML = '<option value="">Нет классов</option>';
                 return;
             }
             
@@ -1264,7 +1141,6 @@
                 classSelect.appendChild(option);
             });
             
-            // Обновляем список учеников при изменении класса
             classSelect.addEventListener('change', updateStudentList);
         }
 
@@ -1285,8 +1161,6 @@
                     option.textContent = student.name;
                     studentSelect.appendChild(option);
                 });
-            } else {
-                studentSelect.innerHTML = '<option value="">В классе нет учеников</option>';
             }
         }
 
@@ -1296,11 +1170,7 @@
             selector.innerHTML = '';
             
             if (classes.length === 0) {
-                const option = document.createElement('option');
-                option.value = '';
-                option.textContent = 'Нет классов';
-                option.disabled = true;
-                selector.appendChild(option);
+                selector.innerHTML = '<option value="">Нет классов</option>';
                 document.getElementById('current-class-name').textContent = '';
                 return;
             }
@@ -1319,7 +1189,7 @@
             document.getElementById('current-class-name').textContent = currentClass ? currentClass.name : '';
         }
 
-        // 🔄 Смена текущего класса
+        // 🔄 Смена класса
         function changeCurrentClass() {
             const selector = document.getElementById('class-selector');
             const selectedValue = selector.value;
@@ -1332,7 +1202,7 @@
             }
         }
 
-        // 📊 Рендеринг таблицы учителя
+        // 📊 Рендеринг таблицы
         function renderTeacherTable() {
             const tbody = document.getElementById('teacher-table-body');
             const emptyMessage = document.getElementById('empty-class-message');
@@ -1364,7 +1234,7 @@
                 nameCell.textContent = student.name;
                 row.appendChild(nameCell);
                 
-                // Оценки по предметам
+                // Оценки
                 const subjects = ['math', 'russian', 'history', 'biology'];
                 subjects.forEach(subject => {
                     const cell = document.createElement('td');
@@ -1380,7 +1250,7 @@
                     row.appendChild(cell);
                 });
                 
-                // Кнопки действий
+                // Кнопки
                 const actionsCell = document.createElement('td');
                 const editBtn = document.createElement('button');
                 editBtn.textContent = '✏️ Редактировать';
@@ -1399,7 +1269,7 @@
             });
         }
 
-        // 📝 Редактирование оценок ученика
+        // 📝 Редактирование оценок
         function editStudentGrades(student) {
             currentEditingStudent = student;
             
@@ -1412,7 +1282,7 @@
             document.getElementById('edit-grades-modal').classList.remove('hidden');
         }
 
-        // 💾 Сохранение оценок ученика (ОБЩИЕ данные)
+        // 💾 Сохранение оценок
         function saveStudentGrades() {
             if (!currentEditingStudent) return;
             
@@ -1421,7 +1291,6 @@
             const historyGrades = parseGrades(document.getElementById('history-grades').value);
             const biologyGrades = parseGrades(document.getElementById('biology-grades').value);
             
-            // Находим и обновляем студента в ОБЩИХ данных
             const currentClass = classes.find(c => c.id === currentClassId);
             if (currentClass) {
                 const student = currentClass.students.find(s => s.id === currentEditingStudent.id);
@@ -1431,38 +1300,26 @@
                     student.history = historyGrades;
                     student.biology = biologyGrades;
                     
-                    // Сохраняем ОБЩИЕ данные
-                    saveSharedData({ classes: classes });
-                    updateSyncStatus('syncing', '🔄 Сохранение...');
-                    
-                    setTimeout(() => {
-                        closeModal('edit-grades-modal');
-                        renderTeacherTable();
-                        updateSyncStatus('synced', '✅ Данные сохранены и синхронизированы');
-                    }, 500);
+                    saveData();
+                    closeModal('edit-grades-modal');
+                    renderTeacherTable();
+                    alert('✅ Оценки сохранены!');
                 }
             }
         }
 
-        // 🗑️ Удаление ученика (ОБЩИЕ данные)
+        // 🗑️ Удаление ученика
         function deleteStudent(studentId) {
-            if (!confirm('❓ Вы уверены, что хотите удалить этого ученика?')) {
+            if (!confirm('❓ Удалить ученика?')) {
                 return;
             }
             
             const currentClass = classes.find(c => c.id === currentClassId);
             if (currentClass) {
                 currentClass.students = currentClass.students.filter(s => s.id !== studentId);
-                
-                // Сохраняем ОБЩИЕ данные
-                saveSharedData({ classes: classes });
-                updateSyncStatus('syncing', '🔄 Удаление...');
-                
-                setTimeout(() => {
-                    renderTeacherTable();
-                    renderStudentAuthForm();
-                    updateSyncStatus('synced', '✅ Ученик удален');
-                }, 500);
+                saveData();
+                renderTeacherTable();
+                renderStudentAuthForm();
             }
         }
 
@@ -1471,7 +1328,6 @@
             const studentContent = document.getElementById('student-content');
             
             if (!currentStudent && currentUser.type === 'student') {
-                // Находим студента по сохраненным данным в ОБЩИХ данных
                 const classId = currentUser.classId;
                 const studentId = currentUser.id;
                 
@@ -1484,9 +1340,8 @@
             if (!currentStudent) {
                 studentContent.innerHTML = `
                     <div class="empty-state">
-                        <h3>📭 Нет данных для отображения</h3>
-                        <p>Ваши оценки еще не добавлены в систему.</p>
-                        <p>Обратитесь к вашему учителю.</p>
+                        <h3>📭 Нет данных</h3>
+                        <p>Обратитесь к учителю</p>
                     </div>
                 `;
                 return;
@@ -1533,7 +1388,7 @@
                 <div class="student-info">
                     <div class="student-name">${currentStudent.name}</div>
                     <div>🎓 Класс: ${className}</div>
-                    <div>🔄 Данные обновляются в реальном времени</div>
+                    <div>🔄 Данные обновляются автоматически</div>
                 </div>
                 
                 <h2>📊 Мои оценки</h2>
@@ -1553,11 +1408,11 @@
                 
                 <div class="stats">
                     <div class="stat-card grade-5">
-                        <div>Отличные оценки (5)</div>
+                        <div>Отличные (5)</div>
                         <div class="stat-value">${excellentCount}</div>
                     </div>
                     <div class="stat-card grade-4">
-                        <div>Хорошие оценки (4)</div>
+                        <div>Хорошие (4)</div>
                         <div class="stat-value">${goodCount}</div>
                     </div>
                     <div class="stat-card grade-3">
@@ -1572,13 +1427,12 @@
             `;
         }
 
-        // ➕ Показать модальное окно добавления класса
+        // ➕ Показать модальные окна
         function showAddClassModal() {
             document.getElementById('new-class-name').value = '';
             document.getElementById('add-class-modal').classList.remove('hidden');
         }
 
-        // 👨‍🎓 Показать модальное окно добавления ученика
         function showAddStudentModal() {
             if (classes.length === 0) {
                 alert('❌ Сначала создайте класс');
@@ -1587,7 +1441,7 @@
             
             const currentClass = classes.find(c => c.id === currentClassId);
             if (!currentClass) {
-                alert('❌ Сначала выберите класс');
+                alert('❌ Выберите класс');
                 return;
             }
             
@@ -1596,7 +1450,7 @@
             document.getElementById('add-student-modal').classList.remove('hidden');
         }
 
-        // 🏫 Добавление нового класса (ОБЩИЕ данные)
+        // 🏫 Добавление класса
         function addNewClass() {
             const className = document.getElementById('new-class-name').value.trim();
             if (!className) {
@@ -1613,20 +1467,14 @@
             classes.push(newClass);
             currentClassId = newClass.id;
             
-            // Сохраняем ОБЩИЕ данные
-            saveSharedData({ classes: classes });
-            updateSyncStatus('syncing', '🔄 Создание класса...');
-            
-            setTimeout(() => {
-                closeModal('add-class-modal');
-                renderClassSelector();
-                renderTeacherTable();
-                renderStudentAuthForm();
-                updateSyncStatus('synced', '✅ Класс создан и синхронизирован');
-            }, 500);
+            saveData();
+            closeModal('add-class-modal');
+            renderClassSelector();
+            renderTeacherTable();
+            renderStudentAuthForm();
         }
 
-        // 👨‍🎓 Добавление нового ученика (ОБЩИЕ данные)
+        // 👨‍🎓 Добавление ученика
         function addNewStudent() {
             const studentName = document.getElementById('new-student-name').value.trim();
             if (!studentName) {
@@ -1648,16 +1496,10 @@
             
             currentClass.students.push(newStudent);
             
-            // Сохраняем ОБЩИЕ данные
-            saveSharedData({ classes: classes });
-            updateSyncStatus('syncing', '🔄 Добавление ученика...');
-            
-            setTimeout(() => {
-                closeModal('add-student-modal');
-                renderTeacherTable();
-                renderStudentAuthForm();
-                updateSyncStatus('synced', '✅ Ученик добавлен и синхронизирован');
-            }, 500);
+            saveData();
+            closeModal('add-student-modal');
+            renderTeacherTable();
+            renderStudentAuthForm();
         }
 
         // ❌ Закрыть модальное окно
@@ -1665,7 +1507,7 @@
             document.getElementById(modalId).classList.add('hidden');
         }
 
-        // 🔢 Парсинг оценок из строки
+        // 🔢 Парсинг оценок
         function parseGrades(gradeString) {
             if (!gradeString.trim()) return [];
             
